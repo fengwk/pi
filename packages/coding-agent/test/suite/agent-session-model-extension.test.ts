@@ -155,6 +155,69 @@ describe("AgentSession model and extension characterization", () => {
 		).toBeDefined();
 	});
 
+	it("passes the agent abort signal to extension tool_call handlers", async () => {
+		let eventSignal: AbortSignal | undefined;
+		let agentSignal: AbortSignal | undefined;
+		let observedAborted = false;
+		let resolveHandlerStarted: () => void;
+		const handlerStarted = new Promise<void>((resolve) => {
+			resolveHandlerStarted = resolve;
+		});
+		let resolveHandlerFinished: () => void;
+		const handlerFinished = new Promise<void>((resolve) => {
+			resolveHandlerFinished = resolve;
+		});
+		const echoTool: AgentTool = {
+			name: "echo",
+			label: "Echo",
+			description: "Echo text back",
+			parameters: Type.Object({ text: Type.String() }),
+			execute: async () => {
+				throw new Error("tool should not execute after abort");
+			},
+		};
+		let harness: Harness;
+		harness = await createHarness({
+			tools: [echoTool],
+			extensionFactories: [
+				(pi) => {
+					pi.on("tool_call", async (event) => {
+						eventSignal = event.signal;
+						agentSignal = harness.session.agent.signal;
+						resolveHandlerStarted();
+						if (!event.signal) {
+							resolveHandlerFinished();
+							return;
+						}
+
+						// Holding the hook until abort proves the event signal can cancel blocking extension waits.
+						await new Promise<void>((resolve) => {
+							event.signal?.addEventListener("abort", () => resolve(), { once: true });
+						});
+						observedAborted = event.signal.aborted;
+						resolveHandlerFinished();
+					});
+				},
+			],
+		});
+		harnesses.push(harness);
+		harness.setResponses([
+			fauxAssistantMessage([fauxToolCall("echo", { text: "hello" })], { stopReason: "toolUse" }),
+		]);
+
+		const prompt = harness.session.prompt("hi");
+		await handlerStarted;
+
+		expect(eventSignal).toBeDefined();
+		expect(eventSignal).toBe(agentSignal);
+
+		harness.session.agent.abort();
+		await handlerFinished;
+		await prompt;
+
+		expect(observedAborted).toBe(true);
+	});
+
 	it("allows extension tool_result handlers to modify tool results", async () => {
 		const toolUsage: Usage = {
 			input: 1,

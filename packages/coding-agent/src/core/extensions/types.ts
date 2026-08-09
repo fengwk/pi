@@ -853,6 +853,8 @@ export type InputEventResult =
 interface ToolCallEventBase {
 	type: "tool_call";
 	toolCallId: string;
+	/** Agent abort signal for cancelling blocking hook UI or waits. */
+	readonly signal?: AbortSignal;
 }
 
 export interface BashToolCallEvent extends ToolCallEventBase {

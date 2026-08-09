@@ -10,6 +10,10 @@
 
 - Replaced the inherited Mistral SDK transport with a native Chat Completions HTTP stream, eliminating its generated client and schema runtime overhead.
 
+### Fixed
+
+- Fixed extension `tool_call` events omitting the agent abort signal needed to cancel blocking hook UI and waits.
+
 ## [0.84.1] - 2026-08-07
 
 ### New Features
